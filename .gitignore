@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files & Secrets
+.env
+.env.*
+!.env.example
+*.env
+
+# Build outputs
+dist/
+build/
+
+# Logs and temporary files
+*.log
+npm-debug.log*
+yarn-debug.log*
+uploads/
+*/uploads/
+
+# OS and Editor files
+Thumbs.db
+Desktop.ini
+~$*
+*.tmp
+.vscode/
+.idea/
