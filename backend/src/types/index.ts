@@ -28,6 +28,7 @@ export interface Member {
   agt_member_email: string;
   agt_member_position: string;
   agt_member_section: string;
+  agt_member_location?: string | null;
   agt_position_name?: string;
   agt_position_level?: number;
   name_section?: string;
@@ -39,6 +40,7 @@ export interface StepApproverDef {
   position_id: string;
   section_id: string | null; // null = แผนกเดียวกับผู้ขอ
   member_id?: string | null; // รหัสพนักงานเฉพาะเจาะจง (ถ้ามี เพื่อระบุตัวตนกรณีตำแหน่งซ้ำกันหลายคน)
+  location?: string | null; // โลเคชั่นเฉพาะเจาะจง เช่น "Machine", "Utility", "MNOffice" หรือ null = ทุกโลเคชั่น
 }
 
 export interface ApprovalStep {
@@ -101,6 +103,7 @@ export interface ApproverInfo {
   name_en: string;
   nickname: string;
   email: string;
+  location?: string | null;
   section: {
     id: string;
     name: string;

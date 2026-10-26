@@ -108,7 +108,7 @@ export default function SimulatorPage() {
                   >
                     <div style={{ fontWeight: 500, fontSize: 14 }}>{m.agt_member_nameTH}</div>
                     <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                      #{m.agt_member_id} · {m.name_section} · {m.agt_position_name} (Lv.{m.agt_position_level})
+                      #{m.agt_member_id} · {m.name_section} · {m.agt_position_name} (Lv.{m.agt_position_level}){m.agt_member_location ? ` · 📍 ${m.agt_member_location}` : ''}
                     </div>
                   </div>
                 ))}
@@ -331,7 +331,7 @@ export default function SimulatorPage() {
                                   <div style={{ flex: 1 }}>
                                     <div style={{ fontWeight: 600, fontSize: 14 }}>{approver.name_th}</div>
                                     <div style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-                                      {approver.name_en} · {approver.section.name}
+                                      {approver.name_en} · {approver.section.name}{approver.location ? ` · 📍 ${approver.location}` : ''}
                                     </div>
                                   </div>
                                   <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', textAlign: 'right' }}>

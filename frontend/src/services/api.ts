@@ -51,8 +51,13 @@ export const positionApi = {
     api.get<{ success: boolean; data: Position[] }>('/api/positions'),
 };
 
+export const locationApi = {
+  getAll: () =>
+    api.get<{ success: boolean; data: string[]; total: number }>('/api/locations'),
+};
+
 export const memberApi = {
-  getAll: (params?: { section_id?: string | number; position_id?: string | number; search?: string }) =>
+  getAll: (params?: { section_id?: string | number; position_id?: string | number; location?: string; search?: string }) =>
     api.get<{ success: boolean; data: Member[]; total: number }>('/api/members', { params }),
 
   getById: (id: string | number) =>

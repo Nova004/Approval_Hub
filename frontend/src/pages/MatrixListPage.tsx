@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { matrixApi, sectionApi, positionApi, memberApi } from '../services/api';
+import { matrixApi, sectionApi, positionApi, memberApi, locationApi } from '../services/api';
 import type { ApprovalMatrix, ApprovalStep, CreateMatrixDto, UpdateMatrixDto, Section, Position, Member } from '../types';
 import { useToast } from '../components/Toast';
 import ToastContainer from '../components/Toast';
@@ -27,12 +27,13 @@ interface SortableStepProps {
   index: number;
   positions: Position[];
   sections: Section[];
+  locations: string[];
   members: Member[];
   onChange: (id: string, field: keyof ApprovalStep, value: any) => void;
   onRemove: (id: string) => void;
 }
 
-function SortableStepItem({ step, index, positions, sections, members, onChange, onRemove }: SortableStepProps) {
+function SortableStepItem({ step, index, positions, sections, locations, members, onChange, onRemove }: SortableStepProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: step.id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -40,14 +41,27 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
   };
 
   const groupedApprovers = useMemo(() => {
-    const groups: { section_id: string | null; position_ids: string[]; member_id: string | null }[] = [];
+    const groups: {
+      section_id: string | null;
+      location: string | null;
+      position_ids: string[];
+      member_id: string | null;
+    }[] = [];
+
     if (!step.approvers || step.approvers.length === 0) {
-      return [{ section_id: null, position_ids: [], member_id: null }];
+      return [{ section_id: null, location: null, position_ids: [], member_id: null }];
     }
+
     step.approvers.forEach(a => {
-      let group = groups.find(g => g.section_id === a.section_id);
+      const aLoc = a.location && a.location.trim() !== '' ? a.location.trim() : null;
+      let group = groups.find(g => g.section_id === a.section_id && (g.location || null) === aLoc);
       if (!group) {
-        group = { section_id: a.section_id, position_ids: [], member_id: a.member_id || null };
+        group = {
+          section_id: a.section_id,
+          location: aLoc,
+          position_ids: [],
+          member_id: a.member_id || null,
+        };
         groups.push(group);
       }
       if (a.position_id) {
@@ -57,60 +71,94 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
         group.member_id = a.member_id;
       }
     });
+
     return groups;
   }, [step.approvers]);
 
-  const togglePosition = (section_id: string | null, pos_id: string, checked: boolean) => {
+  const togglePosition = (section_id: string | null, location: string | null, pos_id: string, checked: boolean) => {
     let newApprovers = [...(step.approvers || [])];
-    const currentGroup = groupedApprovers.find(g => g.section_id === section_id);
+    const targetLoc = location && location.trim() !== '' ? location.trim() : null;
+    const currentGroup = groupedApprovers.find(g => g.section_id === section_id && (g.location || null) === targetLoc);
     const currentMemberId = currentGroup?.member_id || null;
+
     if (checked) {
-      if (!newApprovers.some(a => a.section_id === section_id && a.position_id === pos_id)) {
-        newApprovers.push({ section_id, position_id: pos_id, member_id: currentMemberId });
+      if (!newApprovers.some(a => a.section_id === section_id && (a.location || null) === targetLoc && a.position_id === pos_id)) {
+        newApprovers.push({ section_id, location: targetLoc, position_id: pos_id, member_id: currentMemberId });
       }
     } else {
-      newApprovers = newApprovers.filter(a => !(a.section_id === section_id && a.position_id === pos_id));
+      newApprovers = newApprovers.filter(a => !(a.section_id === section_id && (a.location || null) === targetLoc && a.position_id === pos_id));
     }
-    if (!newApprovers.some(a => a.section_id === section_id)) {
-      newApprovers.push({ section_id, position_id: '', member_id: currentMemberId });
+
+    if (!newApprovers.some(a => a.section_id === section_id && (a.location || null) === targetLoc)) {
+      newApprovers.push({ section_id, location: targetLoc, position_id: '', member_id: currentMemberId });
     }
+
     newApprovers = newApprovers.filter((a, _, self) => {
       if (a.position_id === '') {
-        return !self.some(other => other.section_id === a.section_id && other.position_id !== '');
+        return !self.some(other => other.section_id === a.section_id && (other.location || null) === (a.location || null) && other.position_id !== '');
       }
       return true;
+    });
+
+    onChange(step.id, 'approvers', newApprovers);
+  };
+
+  const changeGroupSection = (old_section_id: string | null, location: string | null, new_section_id: string | null) => {
+    const targetLoc = location && location.trim() !== '' ? location.trim() : null;
+    const newApprovers = (step.approvers || []).map(a => {
+      const aLoc = a.location && a.location.trim() !== '' ? a.location.trim() : null;
+      if (a.section_id === old_section_id && aLoc === targetLoc) {
+        return { ...a, section_id: new_section_id, member_id: null };
+      }
+      return a;
     });
     onChange(step.id, 'approvers', newApprovers);
   };
 
-  const changeGroupSection = (old_section_id: string | null, new_section_id: string | null) => {
-    const newApprovers = (step.approvers || []).map(a => 
-      a.section_id === old_section_id ? { ...a, section_id: new_section_id, member_id: null } : a
-    );
+  const changeGroupLocation = (section_id: string | null, old_location: string | null, new_location: string | null) => {
+    const targetOldLoc = old_location && old_location.trim() !== '' ? old_location.trim() : null;
+    const targetNewLoc = new_location && new_location.trim() !== '' ? new_location.trim() : null;
+    const newApprovers = (step.approvers || []).map(a => {
+      const aLoc = a.location && a.location.trim() !== '' ? a.location.trim() : null;
+      if (a.section_id === section_id && aLoc === targetOldLoc) {
+        return { ...a, location: targetNewLoc, member_id: null };
+      }
+      return a;
+    });
     onChange(step.id, 'approvers', newApprovers);
   };
 
-  const changeGroupMember = (section_id: string | null, new_member_id: string | null) => {
-    const newApprovers = (step.approvers || []).map(a => 
-      a.section_id === section_id 
-        ? { ...a, member_id: new_member_id && new_member_id.trim() !== '' ? new_member_id.trim() : null } 
-        : a
-    );
+  const changeGroupMember = (section_id: string | null, location: string | null, new_member_id: string | null) => {
+    const targetLoc = location && location.trim() !== '' ? location.trim() : null;
+    const newApprovers = (step.approvers || []).map(a => {
+      const aLoc = a.location && a.location.trim() !== '' ? a.location.trim() : null;
+      if (a.section_id === section_id && aLoc === targetLoc) {
+        return { ...a, member_id: new_member_id && new_member_id.trim() !== '' ? new_member_id.trim() : null };
+      }
+      return a;
+    });
     onChange(step.id, 'approvers', newApprovers);
   };
 
-  const removeGroup = (section_id: string | null) => {
-    let newApprovers = (step.approvers || []).filter(a => a.section_id !== section_id);
+  const removeGroup = (section_id: string | null, location: string | null) => {
+    const targetLoc = location && location.trim() !== '' ? location.trim() : null;
+    let newApprovers = (step.approvers || []).filter(a => {
+      const aLoc = a.location && a.location.trim() !== '' ? a.location.trim() : null;
+      return !(a.section_id === section_id && aLoc === targetLoc);
+    });
     if (newApprovers.length === 0) {
-      newApprovers = [{ position_id: '', section_id: null, member_id: null }];
+      newApprovers = [{ position_id: '', section_id: null, location: null, member_id: null }];
     }
     onChange(step.id, 'approvers', newApprovers);
   };
 
-  const getGroupCandidateMembers = (secId: string | null, posIds: string[], currentMemberId?: string | null) => {
+  const getGroupCandidateMembers = (secId: string | null, location: string | null, posIds: string[], currentMemberId?: string | null) => {
     if (!members || members.length === 0) return [];
     const list = members.filter((m) => {
       if (secId && String(m.agt_member_section).trim() !== String(secId).trim()) {
+        return false;
+      }
+      if (location && String(m.agt_member_location || '').trim() !== String(location).trim()) {
         return false;
       }
       if (posIds.length > 0 && !posIds.includes(m.agt_member_position)) {
@@ -146,20 +194,20 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
       <div style={{ flex: 1, display: 'grid', gap: 15 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {groupedApprovers.map((grp, gIdx) => {
-            const candidateMembers = getGroupCandidateMembers(grp.section_id, grp.position_ids, grp.member_id);
+            const candidateMembers = getGroupCandidateMembers(grp.section_id, grp.location, grp.position_ids, grp.member_id);
             return (
               <div key={gIdx} style={{ display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--color-bg-secondary)', padding: '16px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border-color)' }}>
                 
-                {/* Header row: Section Dropdown & Remove Button */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16 }}>
-                  <div className="form-group" style={{ flex: 1, marginBottom: 0 }}>
+                {/* Header row: Section Dropdown & Location Dropdown & Remove Button */}
+                <div style={{ display: 'grid', gridTemplateColumns: groupedApprovers.length > 1 ? '1fr 1fr auto' : '1fr 1fr', gap: 12, alignItems: 'flex-end' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">{gIdx === 0 ? 'แผนกผู้อนุมัติ' : 'แผนกผู้อนุมัติ (OR)'}</label>
                     <select
                       className="select"
                       value={grp.section_id ?? ''}
                       onChange={(e) => {
                         const newVal = e.target.value === '' ? null : e.target.value;
-                        changeGroupSection(grp.section_id, newVal);
+                        changeGroupSection(grp.section_id, grp.location, newVal);
                       }}
                       style={{ background: 'var(--color-bg)' }}
                     >
@@ -171,14 +219,44 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
                       ))}
                     </select>
                   </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>📍 โลเคชั่นผู้อนุมัติ (Location)</span>
+                      <span style={{ fontSize: 11, fontWeight: 400, color: grp.location ? 'var(--color-primary)' : 'var(--color-text-muted)' }}>
+                        {grp.location ? `🏢 ล็อกที่ ${grp.location}` : '🌐 ทุกโลเคชั่น (Default)'}
+                      </span>
+                    </label>
+                    <select
+                      className="select"
+                      value={grp.location ?? ''}
+                      onChange={(e) => {
+                        const newVal = e.target.value === '' ? null : e.target.value;
+                        changeGroupLocation(grp.section_id, grp.location, newVal);
+                      }}
+                      style={{
+                        background: grp.location ? 'rgba(59, 130, 246, 0.08)' : 'var(--color-bg)',
+                        borderColor: grp.location ? 'var(--color-primary)' : 'var(--border-color)',
+                        fontWeight: grp.location ? 600 : 400,
+                      }}
+                    >
+                      <option value="">ทุก Location (Default — ไม่จำกัดโลเคชั่น)</option>
+                      {locations.map((loc) => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
                   {groupedApprovers.length > 1 && (
                     <button
                       className="btn btn-ghost"
                       style={{ color: 'var(--color-danger)', padding: '0 12px', height: 42, background: 'var(--color-bg)', border: '1px solid var(--border-color)' }}
-                      onClick={() => removeGroup(grp.section_id)}
-                      title="ลบกลุ่มผู้อนุมัตินี้"
+                      onClick={() => removeGroup(grp.section_id, grp.location)}
+                      title="ลบกลุ่มเงื่อนไขนี้"
                     >
-                      ✖ ลบแผนกนี้
+                      ✖ ลบเงื่อนไข
                     </button>
                   )}
                 </div>
@@ -192,7 +270,7 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
                         <input 
                           type="checkbox" 
                           checked={grp.position_ids.includes(p.agt_position_id)} 
-                          onChange={(e) => togglePosition(grp.section_id, p.agt_position_id, e.target.checked)} 
+                          onChange={(e) => togglePosition(grp.section_id, grp.location, p.agt_position_id, e.target.checked)} 
                           style={{ accentColor: 'var(--color-primary)' }}
                         />
                         <span style={{ fontSize: 13, fontWeight: grp.position_ids.includes(p.agt_position_id) ? 600 : 400 }}>{p.agt_position_name} <span style={{ opacity: 0.8 }}>(Lv.{p.agt_position_level})</span></span>
@@ -214,7 +292,7 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
                     value={grp.member_id ?? ''}
                     onChange={(e) => {
                       const val = e.target.value === '' ? null : e.target.value;
-                      changeGroupMember(grp.section_id, val);
+                      changeGroupMember(grp.section_id, grp.location, val);
                     }}
                     style={{
                       background: grp.member_id ? 'rgba(59, 130, 246, 0.08)' : 'var(--color-bg)',
@@ -225,7 +303,7 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
                     <option value="">ทุกคนในตำแหน่งที่เลือก (Default — ไม่เจาะจงบุคคล)</option>
                     {candidateMembers.map((m) => (
                       <option key={m.agt_member_id} value={String(m.agt_member_id)}>
-                        {m.agt_member_nameTH} ({m.agt_member_nameEN}) [{m.agt_member_id}] — {m.agt_position_name || m.agt_member_position}
+                        {m.agt_member_nameTH} ({m.agt_member_nameEN}) [{m.agt_member_id}] — {m.agt_position_name || m.agt_member_position}{m.agt_member_location ? ` [📍 ${m.agt_member_location}]` : ''}
                       </option>
                     ))}
                   </select>
@@ -239,7 +317,7 @@ function SortableStepItem({ step, index, positions, sections, members, onChange,
             <button 
               className="btn btn-secondary btn-sm"
               onClick={() => {
-                onChange(step.id, 'approvers', [...step.approvers, { position_id: '', section_id: null }]);
+                onChange(step.id, 'approvers', [...step.approvers, { position_id: '', section_id: null, location: null }]);
               }}
             >
               + เพิ่มแผนก/เงื่อนไขอื่น (OR)
@@ -293,13 +371,14 @@ interface EditorProps {
   matrix: ApprovalMatrix | null; // null = create new
   sections: Section[];
   positions: Position[];
+  locations: string[];
   members: Member[];
   onClose: () => void;
   onSave: () => void;
   addToast: (type: 'success' | 'error' | 'info', msg: string) => void;
 }
 
-function MatrixEditor({ matrix, sections, positions, members, onClose, onSave, addToast }: EditorProps) {
+function MatrixEditor({ matrix, sections, positions, locations, members, onClose, onSave, addToast }: EditorProps) {
   const [sectionId, setSectionId] = useState<string>(matrix?.section_id || '');
   const [targetPositions, setTargetPositions] = useState<string[]>(matrix?.target_positions || []);
   const [matrixName, setMatrixName] = useState(matrix?.matrix_name || '');
@@ -356,6 +435,7 @@ function MatrixEditor({ matrix, sections, positions, members, onClose, onSave, a
     approvers: s.approvers.map((a) => ({
       position_id: a.position_id,
       section_id: a.section_id,
+      location: a.location && a.location.trim() !== '' ? a.location.trim() : undefined,
       member_id: a.member_id && String(a.member_id).trim() !== '' ? String(a.member_id).trim() : undefined,
     })),
     description: s.description,
@@ -519,6 +599,7 @@ function MatrixEditor({ matrix, sections, positions, members, onClose, onSave, a
                         index={i}
                         positions={positions}
                         sections={sections}
+                        locations={locations}
                         members={members}
                         onChange={changeStep}
                         onRemove={removeStep}
@@ -559,6 +640,7 @@ export default function MatrixListPage() {
   const [matrices, setMatrices] = useState<ApprovalMatrix[]>([]);
   const [sections, setSections] = useState<Section[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
+  const [locations, setLocations] = useState<string[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -576,16 +658,18 @@ export default function MatrixListPage() {
       if (filterPosition) params.position_id = filterPosition;
       if (filterActive !== '') params.is_active = filterActive === 'true';
 
-      const [matRes, secRes, posRes, memRes] = await Promise.all([
+      const [matRes, secRes, posRes, memRes, locRes] = await Promise.all([
         matrixApi.getAll(params),
         sectionApi.getAll(),
         positionApi.getAll(),
         memberApi.getAll(),
+        locationApi.getAll(),
       ]);
       setMatrices(matRes.data.data);
       setSections(secRes.data.data);
       setPositions(posRes.data.data);
       setMembers(memRes.data.data);
+      setLocations(locRes.data.data);
     } catch (err) {
       addToast('error', 'โหลดข้อมูลไม่สำเร็จ');
     } finally {
@@ -726,10 +810,15 @@ export default function MatrixListPage() {
                     })()}
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span className="badge badge-gray">
                         {Array.isArray(m.approval_steps) ? m.approval_steps.length : 0} steps
                       </span>
+                      {Array.isArray(m.approval_steps) && m.approval_steps.some(s => s.approvers?.some(a => a.location)) && (
+                        <span className="badge" style={{ fontSize: 11, padding: '2px 6px', background: 'rgba(168, 85, 247, 0.15)', color: '#a855f7', border: '1px solid rgba(168, 85, 247, 0.3)' }} title="มีขั้นตอนที่กำหนด Location เฉพาะเจาะจง">
+                          📍 มี Location
+                        </span>
+                      )}
                       {Array.isArray(m.approval_steps) && m.approval_steps.some(s => s.approvers?.some(a => a.member_id)) && (
                         <span className="badge badge-blue" style={{ fontSize: 11, padding: '2px 6px' }} title="มีขั้นตอนที่ล็อกผู้อนุมัติเจาะจงบุคคล">
                           👤 ล็อกบุคคล
@@ -764,6 +853,7 @@ export default function MatrixListPage() {
           matrix={editTarget}
           sections={sections}
           positions={positions}
+          locations={locations}
           members={members}
           onClose={() => setEditorOpen(false)}
           onSave={load}

@@ -150,6 +150,25 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
           ORDER BY CASE WHEN section_id = 'S005' THEN 0 ELSE 1 END, matrix_id ASC
         `);
     }
+
+    // ง) Fallback: ถ้าค้นหา FM-MN-012-MNU หรือ FM-MN-012-MNM ไม่พบ ให้ลองค้นหา base form_code เช่น FM-MN-012
+    if (!matrixResult.recordset[0] && formCode.includes('-')) {
+      const parts = formCode.split('-');
+      if (parts.length > 3) {
+        const baseFormCode = parts.slice(0, 3).join('-'); // เช่น 'FM-MN-012'
+        matrixResult = await pool.request()
+          .input('base_form_code', sql.NVarChar(50), baseFormCode)
+          .input('position_id', sql.NVarChar(sql.MAX), `%"${member.agt_member_position}"%`)
+          .query<ApprovalMatrixRow>(`
+            SELECT TOP 1 matrix_id, section_id, form_code, target_positions, matrix_name, approval_steps, is_active
+            FROM agt_approval_matrix
+            WHERE form_code = @base_form_code
+              AND (target_positions LIKE @position_id OR target_positions LIKE '%"ALL"%')
+              AND is_active = 1
+            ORDER BY CASE WHEN section_id = 'S005' THEN 0 ELSE 1 END, matrix_id ASC
+          `);
+      }
+    }
   }
 
   // 4.2 ถ้าไม่มี formCode หรือค้นหาตาม formCode ไม่พบ ให้ค้นหา Matrix ประจำแผนก (Fallback)
@@ -375,12 +394,28 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
           memberFilter = ' AND m.agt_member_id = @spec_member_id';
         }
 
+        if (def.location && String(def.location).trim() !== '' && String(def.location).toUpperCase() !== 'ALL') {
+          const locs = String(def.location).split(',').map(s => s.trim()).filter(Boolean);
+          if (locs.length === 1) {
+            req.input('spec_location', sql.NVarChar(100), locs[0]);
+            memberFilter += ' AND m.agt_member_location = @spec_location';
+          } else if (locs.length > 1) {
+            const locIn = locs.map((loc, lIdx) => {
+              const lName = `loc_${lIdx}`;
+              req.input(lName, sql.NVarChar(100), loc);
+              return `@${lName}`;
+            }).join(', ');
+            memberFilter += ` AND m.agt_member_location IN (${locIn})`;
+          }
+        }
+
         return req.query<{
           agt_member_id: string;
           agt_member_nameTH: string;
           agt_member_nameEN: string;
           agt_member_nickname: string;
           agt_member_email: string;
+          agt_member_location: string | null;
           sec_id: string;
           sec_name: string;
           sec_fullname: string;
@@ -391,6 +426,7 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
             m.agt_member_nameEN,
             m.agt_member_nickname,
             m.agt_member_email,
+            m.agt_member_location,
             s.id_section    AS sec_id,
             s.name_section  AS sec_name,
             s.name_fullsection AS sec_fullname
@@ -439,6 +475,7 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
         name_en: r.agt_member_nameEN,
         nickname: r.agt_member_nickname,
         email: r.agt_member_email,
+        location: r.agt_member_location || null,
         section: {
           id: r.sec_id,
           name: r.sec_name,

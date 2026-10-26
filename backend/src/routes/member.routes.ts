@@ -7,7 +7,7 @@ const router = Router();
 router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const pool = await getPool();
-    const { section_id, position_id, search } = req.query;
+    const { section_id, position_id, location, search } = req.query;
 
     let query = `
       SELECT
@@ -18,6 +18,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         m.agt_member_email,
         m.agt_member_position,
         m.agt_member_section,
+        m.agt_member_location,
         p.agt_position_name,
         p.agt_position_level,
         s.name_section,
@@ -38,12 +39,17 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       query += ' AND m.agt_member_position = @position_id';
       request.input('position_id', sql.VarChar(10), String(position_id));
     }
+    if (location) {
+      query += ' AND m.agt_member_location = @location';
+      request.input('location', sql.NVarChar(100), String(location).trim());
+    }
     if (search) {
       query += ` AND (
         m.agt_member_nameTH  LIKE '%' + @search + '%'
         OR m.agt_member_nameEN  LIKE '%' + @search + '%'
         OR m.agt_member_nickname LIKE '%' + @search + '%'
         OR m.agt_member_email    LIKE '%' + @search + '%'
+        OR m.agt_member_location LIKE '%' + @search + '%'
         OR CAST(m.agt_member_id AS NVARCHAR) = @search
       )`;
       request.input('search', sql.NVarChar(200), String(search));
@@ -68,7 +74,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         SELECT
           m.agt_member_id, m.agt_member_nameTH, m.agt_member_nameEN,
           m.agt_member_nickname, m.agt_member_sex, m.agt_member_email,
-          m.agt_member_position, m.agt_member_section,
+          m.agt_member_position, m.agt_member_section, m.agt_member_location,
           p.agt_position_name, p.agt_position_level,
           s.name_section, s.name_fullsection
         FROM agt_member m

@@ -10,6 +10,7 @@ import matrixRoutes from './routes/matrix.routes';
 import sectionRoutes from './routes/section.routes';
 import positionRoutes from './routes/position.routes';
 import memberRoutes from './routes/member.routes';
+import locationRoutes from './routes/location.routes';
 
 dotenv.config();
 
@@ -41,6 +42,7 @@ app.use('/api/matrix', matrixRoutes);
 app.use('/api/sections', sectionRoutes);
 app.use('/api/positions', positionRoutes);
 app.use('/api/members', memberRoutes);
+app.use('/api/locations', locationRoutes);
 
 // ── 404 handler ───────────────────────────────────────────
 app.use((_req, res) => {
