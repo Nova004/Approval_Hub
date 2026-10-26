@@ -274,7 +274,7 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
         if (targetTier === 'gm' && level <= 1) {
           return approvers;
         }
-        if (targetTier === 'manager' && level >= 3 && level <= 5) {
+        if (targetTier === 'manager' && level >= 2 && level <= 5) {
           return approvers;
         }
         if (targetTier === 'supervisor' && level >= 6 && level <= 8) {
@@ -347,9 +347,9 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
 
       // Skip Rule: เลขน้อย = สูงกว่า
       // 1. ถ้า allowSkip === false: ห้ามข้ามเด็ดขาด
-      // 2. ถ้าเป็น Cross-section (ระบุแผนกอื่น): ไม่ข้าม
-      // 3. ถ้าเป็นสายตรงในแผนกเดียวกัน: ข้ามเมื่อ approver level >= requester level
-      const isCrossSection = def.section_id !== null && def.section_id !== undefined && def.section_id !== originalSection.id_section;
+      // 2. ถ้าเป็น Cross-section (ระบุแผนกอื่นนอกกลุ่มสายงานเดียวกัน): ไม่ข้าม
+      // 3. ถ้าเป็นสายตรงในกลุ่มสายงานเดียวกัน (main + sub-sections): ข้ามเมื่อ approver level >= requester level
+      const isCrossSection = def.section_id !== null && def.section_id !== undefined && !allSectionIds.includes(def.section_id);
 
       if (allowSkip && !isCrossSection) {
         if (approverPos.agt_position_level >= requesterLevel) {
