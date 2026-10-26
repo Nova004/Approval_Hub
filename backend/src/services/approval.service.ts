@@ -530,6 +530,22 @@ export async function calculateApprovalChain(memberId: string, formCode?: string
     });
   }
 
+  // ── 7.1 Same GM Cross-check for FM-MN-012 ───────────────────────────
+  // กรณีแบบฟอร์ม FM-MN-012: ถ้า GM ผู้ร้องขอ (step5_gm_req) เป็นบุคคลเดียวกับ GM of Factory (step6_gm_mn)
+  // ให้ mark step5_gm_req เป็น is_skipped = true ตามระเบียบโรงงาน (ให้ลงนามที่ GM of Factory เพียงจุดเดียว)
+  const gmReqChain = approvalChain.find(s => s.step_key === 'step5_gm_req');
+  const gmMnChain = approvalChain.find(s => s.step_key === 'step6_gm_mn');
+  if (gmReqChain && gmMnChain && !gmReqChain.is_skipped && !gmMnChain.is_skipped) {
+    const reqMemberIds = (gmReqChain.approvers || []).map(a => a.member_id).filter(Boolean);
+    const mnMemberIds = (gmMnChain.approvers || []).map(a => a.member_id).filter(Boolean);
+    const isSameGM = reqMemberIds.length > 0 && reqMemberIds.every(id => mnMemberIds.includes(id));
+    if (isSameGM) {
+      gmReqChain.is_skipped = true;
+      gmReqChain.skip_reason = 'ข้ามโดยอัตโนมัติ (ผู้อนุมัติเป็นบุคคลเดียวกับ GM of Factory ตามระเบียบให้ลงนามที่ GM of Factory เพียงจุดเดียว)';
+      skippedCount++;
+    }
+  }
+
   // ── 8. Validate & Auto-Approval ───────────────────────────
   const activeSteps = approvalChain.filter((s) => !s.is_skipped);
   const isAutoApproved = activeSteps.length === 0 && steps.length > 0;
