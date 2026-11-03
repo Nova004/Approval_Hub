@@ -32,7 +32,7 @@ services:
     container_name: approval-hub-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-81}:80"
+      - "${FRONTEND_PORT:-85}:80"
     networks:
       - default
       - agt-network
