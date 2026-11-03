@@ -1,0 +1,46 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: approval-hub-backend
+    restart: unless-stopped
+    environment:
+      - PORT=3002
+      - NODE_ENV=production
+      - DB_SERVER=${DB_SERVER:-192.168.1.237}
+      - DB_DATABASE=${DB_DATABASE:-AGT_SMART_SY}
+      - DB_USER=${DB_USER}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_PORT=${DB_PORT:-1433}
+      - DB_ENCRYPT=${DB_ENCRYPT:-false}
+      - DB_TRUST_SERVER_CERTIFICATE=${DB_TRUST_SERVER_CERTIFICATE:-true}
+    expose:
+      - "3002"
+    networks:
+      - default
+      - agt-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/approval_hub
+    container_name: approval-hub-frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-81}:80"
+    networks:
+      - default
+      - agt-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  default:
+  agt-network:
+    external: true
